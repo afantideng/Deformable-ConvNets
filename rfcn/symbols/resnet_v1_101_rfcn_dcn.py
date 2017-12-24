@@ -1,3 +1,4 @@
+# -*- coding:utf-8 -*-  
 # --------------------------------------------------------
 # Deformable Convolutional Networks
 # Copyright (c) 2017 Microsoft
@@ -724,10 +725,12 @@ class resnet_v1_101_rfcn_dcn(Symbol):
         # res5
         relu1 = self.get_resnet_v1_conv5(conv_feat)
 
-        rpn_cls_score, rpn_bbox_pred = self.get_rpn(conv_feat, num_anchors)
+        # ---- RPN start ----
+        rpn_cls_score, rpn_bbox_pred = self.get_rpn(conv_feat, num_anchors)   # 获取 rpn 的两个卷积分支 (cls/bbox)    
+
 
         if is_train:
-            # prepare rpn data
+            # prepare rpn data: reshape 以方便进行二分类loss
             rpn_cls_score_reshape = mx.sym.Reshape(
                 data=rpn_cls_score, shape=(0, 2, -1, 0), name="rpn_cls_score_reshape")
 
@@ -741,8 +744,11 @@ class resnet_v1_101_rfcn_dcn(Symbol):
             # ROI proposal
             rpn_cls_act = mx.sym.SoftmaxActivation(
                 data=rpn_cls_score_reshape, mode="channel", name="rpn_cls_act")
+            # 把类别分支 reshape 回来
             rpn_cls_act_reshape = mx.sym.Reshape(
                 data=rpn_cls_act, shape=(0, 2 * num_anchors, -1, 0), name='rpn_cls_act_reshape')
+
+            # RPN 的正负样本抽选
             if cfg.TRAIN.CXX_PROPOSAL:
                 rois = mx.contrib.sym.Proposal(
                     cls_prob=rpn_cls_act_reshape, bbox_pred=rpn_bbox_pred, im_info=im_info, name='rois',
@@ -758,6 +764,7 @@ class resnet_v1_101_rfcn_dcn(Symbol):
                     threshold=cfg.TRAIN.RPN_NMS_THRESH, rpn_min_size=cfg.TRAIN.RPN_MIN_SIZE)
             # ROI proposal target
             gt_boxes_reshape = mx.sym.Reshape(data=gt_boxes, shape=(-1, 5), name='gt_boxes_reshape')
+            # 完成送入末端检测器的抽选
             rois, label, bbox_target, bbox_weight = mx.sym.Custom(rois=rois, gt_boxes=gt_boxes_reshape,
                                                                   op_type='proposal_target',
                                                                   num_classes=num_reg_classes,
@@ -788,13 +795,14 @@ class resnet_v1_101_rfcn_dcn(Symbol):
                     rpn_pre_nms_top_n=cfg.TEST.RPN_PRE_NMS_TOP_N, rpn_post_nms_top_n=cfg.TEST.RPN_POST_NMS_TOP_N,
                     threshold=cfg.TEST.RPN_NMS_THRESH, rpn_min_size=cfg.TEST.RPN_MIN_SIZE)
 
+        # ---- RPN end ----
 
 
         # conv_new_1
         conv_new_1 = mx.sym.Convolution(data=relu1, kernel=(1, 1), num_filter=1024, name="conv_new_1", lr_mult=3.0)
         relu_new_1 = mx.sym.Activation(data=conv_new_1, act_type='relu', name='relu1')
 
-        # rfcn_cls/rfcn_bbox
+        # rfcn_cls(3969) / rfcn_bbox(392)
         rfcn_cls = mx.sym.Convolution(data=relu_new_1, kernel=(1, 1), num_filter=7*7*num_classes, name="rfcn_cls")
         rfcn_bbox = mx.sym.Convolution(data=relu_new_1, kernel=(1, 1), num_filter=7*7*4*num_reg_classes, name="rfcn_bbox")
         # trans_cls / trans_cls

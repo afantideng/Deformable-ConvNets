@@ -1,3 +1,4 @@
+# -*- coding:utf-8 -*-  
 # --------------------------------------------------------
 # Deformable Convolutional Networks
 # Copyright (c) 2016 by Contributors
